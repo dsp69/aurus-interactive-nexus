@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 import { WaveformVisualizer } from './WaveformVisualizer';
 import { ChatHistory } from './ChatHistory';
 import { JarvisAvatar } from './JarvisAvatar';
+import { supabase } from '@/integrations/supabase/client';
+import { useSpotify } from '@/hooks/useSpotify';
 
 interface Message {
   id: string;
@@ -31,6 +33,7 @@ export const JarvisInterface = () => {
   const recognition = useRef<SpeechRecognition | null>(null);
   const synthesis = useRef<SpeechSynthesis | null>(null);
   const { toast } = useToast();
+  const { controlSpotify, authenticateSpotify } = useSpotify();
 
   useEffect(() => {
     // Initialize speech recognition
@@ -105,6 +108,48 @@ export const JarvisInterface = () => {
     }
   };
 
+  const handleSpotifyCommand = async (text: string): Promise<string> => {
+    const lowerText = text.toLowerCase();
+    
+    try {
+      if (lowerText.includes('play') && lowerText.includes('spotify')) {
+        const songQuery = text.replace(/play|spotify|on/gi, '').trim();
+        if (songQuery) {
+          const result = await controlSpotify('play', songQuery);
+          return result.success ? `Playing "${songQuery}" on Spotify` : 'Failed to play music on Spotify';
+        } else {
+          const result = await controlSpotify('play');
+          return result.success ? 'Resuming playback on Spotify' : 'Failed to resume Spotify';
+        }
+      }
+      
+      if (lowerText.includes('pause') || lowerText.includes('stop')) {
+        const result = await controlSpotify('pause');
+        return result.success ? 'Pausing Spotify' : 'Failed to pause Spotify';
+      }
+      
+      if (lowerText.includes('skip') || lowerText.includes('next')) {
+        const result = await controlSpotify('next');
+        return result.success ? 'Skipping to next track' : 'Failed to skip track';
+      }
+      
+      if (lowerText.includes('previous') || lowerText.includes('back')) {
+        const result = await controlSpotify('previous');
+        return result.success ? 'Going to previous track' : 'Failed to go to previous track';
+      }
+      
+      if (lowerText.includes('authenticate') || lowerText.includes('login') || lowerText.includes('connect')) {
+        const result = await authenticateSpotify();
+        return result.message || 'Spotify authentication initiated';
+      }
+      
+      return 'I can help you control Spotify. Try saying "play music", "pause", "skip", or "authenticate Spotify"';
+    } catch (error) {
+      console.error('Spotify command error:', error);
+      return 'Sorry, I encountered an error while trying to control Spotify';
+    }
+  };
+
   const processMessage = async (text: string) => {
     if (!text.trim()) return;
 
@@ -119,24 +164,61 @@ export const JarvisInterface = () => {
     setInputText('');
     setIsProcessing(true);
 
-    // Simulate AI processing delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Check for Spotify commands first
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes('spotify') || lowerText.includes('music') || lowerText.includes('play ') || lowerText.includes('pause') || lowerText.includes('skip')) {
+        const response = await handleSpotifyCommand(text);
+        
+        const jarvisMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: response,
+          sender: 'jarvis',
+          timestamp: new Date()
+        };
 
-    // Simple response logic (can be enhanced with actual AI integration)
-    let response = generateResponse(text.trim());
+        setMessages(prev => [...prev, jarvisMessage]);
+        speak(response);
+        setIsProcessing(false);
+        return;
+      }
 
-    const jarvisMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      text: response,
-      sender: 'jarvis',
-      timestamp: new Date()
-    };
+      // Use AI for general responses
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: { message: text.trim() }
+      });
 
-    setMessages(prev => [...prev, jarvisMessage]);
-    setIsProcessing(false);
+      if (error) throw error;
+
+      const response = data.response || "I apologize, but I'm having trouble processing your request right now.";
+
+      const jarvisMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: response,
+        sender: 'jarvis',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, jarvisMessage]);
+      speak(response);
+    } catch (error) {
+      console.error('AI processing error:', error);
+      
+      // Fallback to basic responses
+      const response = generateResponse(text.trim());
+      
+      const jarvisMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: response,
+        sender: 'jarvis',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, jarvisMessage]);
+      speak(response);
+    }
     
-    // Speak the response
-    speak(response);
+    setIsProcessing(false);
   };
 
   const generateResponse = (input: string): string => {
