@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 export const useSpotify = () => {
@@ -20,7 +20,9 @@ export const useSpotify = () => {
         localStorage.removeItem('spotify_token_expiry');
       }
     }
+  }, []);
 
+  useEffect(() => {
     // Listen for auth success from popup
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'SPOTIFY_AUTH_SUCCESS') {
@@ -37,7 +39,7 @@ export const useSpotify = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const authenticateSpotify = async () => {
+  const authenticateSpotify = useCallback(async () => {
     try {
       setIsLoading(true);
       const { data, error } = await supabase.functions.invoke('spotify-auth');
@@ -65,9 +67,9 @@ export const useSpotify = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const controlSpotify = async (action: string, query?: string) => {
+  const controlSpotify = useCallback(async (action: string, query?: string) => {
     try {
       setIsLoading(true);
       
@@ -88,7 +90,7 @@ export const useSpotify = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [accessToken]);
 
   return {
     authenticateSpotify,
