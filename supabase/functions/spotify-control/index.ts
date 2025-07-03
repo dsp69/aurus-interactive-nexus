@@ -11,16 +11,16 @@ serve(async (req) => {
   }
 
   try {
-    const accessToken = Deno.env.get('SPOTIFY_ACCESS_TOKEN');
+    const { action, query, accessToken } = await req.json();
     
     if (!accessToken) {
       return new Response(
-        JSON.stringify({ error: 'Spotify access token not configured. Please authenticate first.' }),
+        JSON.stringify({ error: 'Spotify access token not provided. Please authenticate first.' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { action, query } = await req.json();
+    
 
     let endpoint = '';
     let method = 'PUT';
